@@ -1,2 +1,2 @@
 # discord2irc
-simply log data on discord server on irch channel, one sided interaction.
+Simply log data on discord server on irc channel, one sided interaction.
