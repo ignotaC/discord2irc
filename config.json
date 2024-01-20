@@ -1,0 +1,21 @@
+{
+  "logging": {
+    "level": "info",
+    "filename": "/dev/null",
+    "quiet": false,
+    "overwrite": false,
+    "use_color": false,
+    "http": {
+      "enable": false,
+      "filename": "http.empty"
+    },
+    "disable_modules": ["WEBSOCKETS", "USER_AGENT", "DISCORD_HTTP" ]
+  },
+  "discord": {
+    "token": "YOU MUST PUT HERE A TOKEN YOU GENERATE ON DISCORD DEV SITE",
+    "default_prefix": {
+      "enable": false,
+      "prefix": "YOUR-COMMANDS-PREFIX"
+    }
+  }
+}
