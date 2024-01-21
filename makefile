@@ -3,6 +3,7 @@
 
 #make: smallsoft/bin/gethostipv scandiscod/logdisc writeirc/ircbot
 make: scandiscord/logdisc writeirc/ircbot
+	@printf "Building finished\n"
 
 writeirc/ircbot:
 	make -C writeirc
