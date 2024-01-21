@@ -10,8 +10,8 @@ logdisc.o: logdisc.c
 
 logdisc: logdisc.o
 	${CC}  logdisc.o -Lconcord/lib -L/usr/local/lib \
-               `pkg-config --libs libcurl` \
-	       -ldiscord -o logdisc
+               -ldiscord `pkg-config --libs libcurl` \
+	       -o logdisc
 
 concord:
 	git clone 'https://github.com/Cogmasters/concord.git'
