@@ -4,21 +4,21 @@ CC = cc -Wall -Wextra -pedantic -pthread -std=c99 -O2
 make: concord concord/lib/libdiscord.a logdisc
 
 logdisc.o: logdisc.c
-	${CC}  -Iconcord/include -Iconcord/core -I/usr/local/include \
-		-Iconcord/gencodecs \
+	${CC}  -Iconcord/include -Iconcord/core -Iconcord/gencodecs \
+               `pkg-config --cflags libcurl` \
 		-c logdisc.c -o logdisc.o
 
 logdisc: logdisc.o
-	${CC}  -Lconcord/lib -L/usr/local/lib logdisc.o \
-		-lcurl -ldiscord -o logdisc
+	${CC}  -Lconcord/lib -L/usr/local/lib \
+               `pkg-config --libs libcurl` \
+	       -ldiscord logdisc.o -o logdisc
 
 concord:
-	@echo get concord
 	git clone 'https://github.com/Cogmasters/concord.git'
 
 concord/lib/libdiscord.a:
-	CFLAGS=-I/usr/local/include \
-	       LDFLAGS=-L/usr/local/lib \
+	CFLAGS=`pkg-config --cflags libcurl` \
+	       LDFLAGS=`pkg-config --libs libcurl` \
 	       gmake -C concord
 
 clean clear: 

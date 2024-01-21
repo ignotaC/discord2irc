@@ -3,7 +3,7 @@
 #include "ignotalib/src/ig_file/igf_read.c"
 #include "ignotalib/src/ig_file/igf_write.c"
 
-#include< <errno,>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

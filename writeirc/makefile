@@ -7,7 +7,6 @@ IGDIR=ignotalib/src
 .PHONY: make clean clear
 
 make: ircbot
-	./ircbot
 
 ircbot: libign_inetcli.a libigf_read.a libigf_write.a ircbot.c
 	${CC} -c $@.c -o $@.o
