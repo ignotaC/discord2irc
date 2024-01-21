@@ -1,10 +1,10 @@
 DBG=#-DNDEBUG
-CC=egcc -Wall -Wextra -pedantic -std=c99 -D_POSIX_C_SOURCE=200809L ${DBG}
+CC=cc -Wall -Wextra -pedantic -std=c99 -D_POSIX_C_SOURCE=200809L ${DBG}
 AR=ar rcs
 
 IGDIR=ignotalib/src
 
-.PHONY: make clean
+.PHONY: make clean clear
 
 make: ircbot
 	./ircbot
@@ -28,7 +28,7 @@ libigf_write.a: ignotalib ${IGDIR}/ig_file/igf_write.c
 ignotalib:
 	git clone 'https://github.com/ignotaC/ignotalib.git'
 
-clean:
+clean clear:
 	rm -rf ignotalib
 	rm -rf igf_read.o libigf_read.a
 	rm -rf igf_write.o libigf_write.a

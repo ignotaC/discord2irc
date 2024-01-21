@@ -1,6 +1,6 @@
 CC = cc -Wall -Wextra -pedantic -pthread -std=c99 -O2
 
-.PHONY: make clean
+.PHONY: make clean clear
 make: concord concord/lib/libdiscord.a logdisc
 
 logdisc.o: logdisc.c
@@ -21,6 +21,6 @@ concord/lib/libdiscord.a:
 	       LDFLAGS=-L/usr/local/lib \
 	       gmake -C concord
 
-clean: 
+clean clear: 
 	rm -rf concord
 	rm -rf logdisc logdisc.o
