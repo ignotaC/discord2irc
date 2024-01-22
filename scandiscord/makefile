@@ -1,7 +1,7 @@
 CC = cc -Wall -Wextra -pedantic -pthread -std=c99 -O2
 
 .PHONY: make clean clear
-make: concord concord/lib/libdiscord.a logdisc
+make: concord/lib/libdiscord.a logdisc
 
 logdisc.o: logdisc.c
 	${CC}  -Iconcord/include -Iconcord/core -Iconcord/gencodecs \
@@ -16,10 +16,14 @@ logdisc: logdisc.o
 concord:
 	git clone 'https://github.com/Cogmasters/concord.git'
 
-concord/lib/libdiscord.a:
+concord/lib/libdiscord.a: concord
 	CFLAGS=`pkg-config --cflags libcurl` \
 	       LDFLAGS=`pkg-config --libs libcurl` \
 	       gmake -C concord
+
+update:
+	cd concord; git pull
+	make make
 
 clean clear: 
 	rm -rf concord
