@@ -10,10 +10,12 @@ make: ircbot gethostipv lext
 	sh runircbot.sh
 
 ircbot: libign_inetcli.a libigf_read.a libigf_write.a \
-	libign_strtoport.a libigf_opt.a libigev_signals.a ircbot.c
+	libign_strtoport.a libigf_opt.a libigev_signals.a \
+	libigt_sleep.a ircbot.c
 	${CC} -c $@.c -o $@.o
-	${CC} $@.o -L. -lign_inetcli -lign_strtoport\
-	  -ligf_read -ligf_write -ligf_opt -ligev_signals -o $@
+	${CC} $@.o -L. -lign_inetcli -lign_strtoport \
+	  -ligf_read -ligf_write -ligf_opt -ligev_signals \
+	  -ligt_sleep -o $@
 
 libign_inetcli.a: ignotalib ${IGDIR}/ig_net/ign_inetcli.c 
 	${CC} -c ${IGDIR}/ig_net/ign_inetcli.c -o ign_inetcli.o
@@ -39,6 +41,11 @@ libigev_signals.a: ignotalib ${IGDIR}/ig_event/igev_signals.c
 	${CC} -c ${IGDIR}/ig_event/igev_signals.c -o igev_signals.o
 	${AR} $@ igev_signals.o
 
+libigt_sleep.a: ignotalib ${IGDIR}/ig_time/igt_sleep.c 
+	${CC} -c ${IGDIR}/ig_time/igt_sleep.c -o igt_sleep.o
+	${AR} $@ igt_sleep.o
+
+
 
 ignotalib:
 	git clone 'https://github.com/ignotaC/ignotalib.git'
@@ -63,8 +70,13 @@ clean clear:
 	rm -rf smallsoft gethostipv lext
 	rm -rf igf_read.o libigf_read.a
 	rm -rf igf_write.o libigf_write.a
+	rm -rf igf_opt.o libigf_opt.a
+	rm -rf igt_sleep.o libigt_sleep.a
 	rm -rf ign_inetcli.o libign_inetcli.a
 	rm -rf igev_signals.o libigev_signals.a
-	rm -rf igf_opt.o libigf_opt.a
 	rm -rf ign_strtoport.o libign_strtoport.a
 	rm -rf ircbot ircbot.o
+
+
+
+

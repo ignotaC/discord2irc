@@ -5,15 +5,18 @@
 #include "ignotalib/src/ig_file/igf_read.h"
 #include "ignotalib/src/ig_file/igf_write.h"
 #include "ignotalib/src/ig_file/igf_opt.h"
+#include "ignotalib/src/ig_time/igt_sleep.h"
 
 #include <signal.h>
 #include <unistd.h>
 
+#include <assert.h>
 #include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define BUFFSIZE 8192
 
@@ -49,22 +52,26 @@ int reader(
     const int fd,
     char *const buff, 
     char **buff_freepos,
-    size_t *buff_leftsize,
-    char *const buff_msg,
-    size_t *const buff_msg_size,
-    const char *const msgend,
-    const size_t msgend_size
+    size_t *buff_leftsize
     )   {
+
+  assert( fd >= 0 );
+  assert( buff != NULL );
+  assert( buff_freepos != NULL );
+  assert( *buff_freepos != NULL );
+  assert( buff_leftsize != NULL );
+
+  if( *buff_leftsize == 0 )  return 0;
 
   // first try to read stuff
   ssize_t readret = igf_read_nb( fd, *buff_freepos, *buff_leftsize );
     
-  // blocking is handled inside function as eintr  
+  // blocking is handled inside function so is eintr  
   // so potentialy more serious stuff here
   if( readret == -1 )  return -1;
   if( readret == 0 )  { // we have FIN EOF
   
-    errno = 0; // reset errno so we know it's FIN EOF not error
+    if( errno == EAGAIN )  return 0;
     return -1;
 
   }
@@ -72,22 +79,57 @@ int reader(
   // update buff free pos and left size
   *buff_freepos += readret;
   *buff_leftsize -= readret;
+  return 1;
+
+}
+
+
+int get_msg( 
+    char *const buff, 
+    char **buff_freepos,
+    size_t *buff_leftsize,
+    char *const buff_msg,
+    size_t *const buff_msg_size,
+    const char *const msgend,
+    const size_t msgend_size,
+    char **scanpos
+    )   {
+
+  assert( buff != NULL );
+  assert( buff_freepos != NULL );
+  assert( *buff_freepos != NULL );
+  assert( buff_leftsize != NULL );
+  assert( buff_msg != NULL );
+  assert( buff_msg_size != NULL );
+  assert( msgend != NULL );
+  assert( scanpos != NULL );
+  assert( *scanpos != NULL );
+
+
+  // scanpos should never pass freepos
+  if( *buff_freepos - *scanpos < msgend_size  )
+    return 0;  // we have nothing to do
 
   // look for message end
   ptrdiff_t msgsize = *buff_freepos - buff;
+  assert( msgsize >= 0 );
   // read is smaller than message end, we can leave
-  if( msgsize < msgend_size )  return 0;
+  if( ( size_t )msgsize < msgend_size )  return 0;
 
   // we can't go further becasue we could leave buff memory in some cases
   size_t msgmaxsize = msgsize - msgend_size; // note <= in loop
-  for( size_t i = 0; i <= msgmaxsize; i++ )  {
+  for( size_t i = *scanpos - buff; i <= msgmaxsize; i++ )  {
 
     // There is a full message
     if( ! memcmp( &buff[i], msgend, msgend_size ) )  {
 
+      // because we will move all not copied data
+      // at the buff start so does the scanpos go on start
+      *scanpos = buff;
+
       // all we need to do with buff_msg part
       *buff_msg_size = i; // set it's new size
-      memcpy( buff, buff_msg, *buff_msg_size ); // copy msg
+      memcpy( buff_msg, buff, *buff_msg_size ); // copy msg
 
       // update buff leftsize and freepos
       *buff_leftsize += *buff_msg_size + msgend_size;
@@ -95,16 +137,32 @@ int reader(
 
       // move data in buff
       size_t curdata_size = *buff_freepos - buff;
-      memmove( &buff[ i + msgend_size ], buff, curdata_size );
+      memmove( buff, &buff[ i + msgend_size ], curdata_size );
       return 1;  // msg passed to buff_msg and discarded from buff
 
     }
 
   }
 
-  return 0; // we never found message
+  // We never found message but if buffor is full
+  // we are going to discard this data simply
+  // It is lost for ever
+  if( *buff_leftsize == 0 )  {
+
+    *buff_leftsize += *buff_freepos - buff;
+    *buff_freepos = buff;
+    *scanpos = buff;  
+
+  }  else  {
+
+    *scanpos = *buff_freepos + 1 - msgend_size;
+
+  }
+
+  return 0;
 
 }
+
 
 int main( const int argc, const char *const argv[] )  {
 
@@ -122,42 +180,125 @@ int main( const int argc, const char *const argv[] )  {
   // turnoff sigpipe, nonblock on stdin
   if( igev_sigign( SIGPIPE ) == -1 )
     fail( "Could not ignore SIGPIPE" );
-  int stdin_fd = fileno( stdin );
-  if( igf_nonblock( stdin_fd ) == -1 )
+  int stdinfd = fileno( stdin );
+  if( stdinfd == -1 )  fail( " Failed to get stdin fd" );
+  if( igf_nonblock( stdinfd ) == -1 )
     fail( "Failed setting stdin nonblock" );
 
-  // set up connection socket
-  int confd = setcon( ip, port_num );
-  if( confd == -1 ) fail( "Failed on seting up conection socket" );
-
   // buffs program uses
+
   char buffirc[ BUFFSIZE ];
+  size_t buffirc_leftsize;
+  char *buffirc_freepos;
+  char buffirc_msg[ BUFFSIZE ] = {0};
+  size_t buffirc_msg_size;
+  char *irc_scanpos;
+
   char buffstdin[ BUFFSIZE ];
-  char buff_msg[ BUFFSIZE ];
+  size_t buffstdin_leftsize;
+  char *buffstdin_freepos;
+  char buffstdin_msg[ BUFFSIZE ];
+  size_t buffstdin_msg_size;
+  char *stdin_scanpos;
 
-  size_t buffirc_leftsize = BUFFSIZE;
-  char *buffirc_freepos = buffirc;
-  size_t buffstdin_leftsize = BUFFSIZE;
-  char *buffstdin_freepos = buffstdin;
-  size_t buff_msg_size = 0;
+  //msg endings
 
+  const char *const stdin_end = "\n";
+  const size_t stdin_end_size = strlen( stdin_end );
 
-/*
-  // startup loop
+  const char *const irc_end = "\r\n";
+  const size_t irc_end_size = strlen( irc_end );
+
+  // stuff from stdio never is restarted - stdio part errors
+  // make program finish with error allways
+  buffstdin_leftsize = BUFFSIZE;
+  buffstdin_freepos = buffstdin;
+  buffstdin_msg_size = 0;
+  stdin_scanpos = buffstdin;
+  int stdindata_stat = 0;
+ 
+  // start program loop
   for(;;)  {
+  
+    // on the other hand irc fail can sometimes get fixed
+    // but we end up reseting irc buffs 
+    buffirc_leftsize = BUFFSIZE;
+    buffirc_freepos = buffirc;
+    buffirc_msg_size = 0;
+    irc_scanpos = buffirc;
+    int ircdata_stat = 0;
 
+    // set up connection socket
+    int confd = setcon( ip, port_num );
+    if( confd == -1 ) fail( "Failed on seting up conection socket" );
 
+    for( int readstat ;;)  {
+
+      // perform reading
+
+      readstat = reader( confd, buffirc, &buffirc_freepos,
+          &buffirc_leftsize );
+
+      if( readstat == -1 )  {
+
+        close( confd );
+        switch( errno )  {
+
+          case 0:
+          case ECONNRESET:
+            break;  // restart
+
+          default:
+            fail( "Program failed on reader function from irc data" );
+
+        }
+
+      }
+
+      readstat = reader( stdinfd, buffstdin, &buffstdin_freepos,
+          &buffstdin_leftsize );
+
+      if( readstat == -1 )  {
+
+        close( confd );  
+        fail( "Program failed on reader function from stdio data" );
+
+      }
+
+      // try to read data
+
+      if(  ircdata_stat != 1  )  { 
+
+        ircdata_stat = get_msg( buffirc, &buffirc_freepos,
+           &buffirc_leftsize, buffirc_msg, &buffirc_msg_size,
+           irc_end, irc_end_size, &irc_scanpos );
+
+      }
+      if(  stdindata_stat != 1  )  {
+
+        stdindata_stat = get_msg( buffstdin, &buffstdin_freepos,
+            &buffstdin_leftsize, buffstdin_msg, &buffstdin_msg_size,
+            stdin_end, stdin_end_size, &stdin_scanpos );
+
+      }
+      // use data
+
+      if( ircdata_stat == 1 )  {
+
+        for( int i = 0; i < buffirc_msg_size; i++ )
+          putchar( buffirc_msg[i] );
+        ircdata_stat = 0;
+        puts("");
+
+      }
+
+      igt_sleepmsec( 200 );
+  
+    }
 
   }
 
-  // main program loop
-  for(;;)  {
-
-
-  }
-*/
- error_cleanup:
-  close( confd );
+  // miricle, this should never leave loop !
   return -1;
 
 }
