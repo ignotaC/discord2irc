@@ -15,6 +15,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -47,7 +48,6 @@ int setcon( const char *const ip, const long int port )  {
 // 0 if no message found
 // error: -1
 // FIN on socket or EOF on file: -1 + errno set to 0
-// log error if buff filled but no msgend, discard data
 int reader( 
     const int fd,
     char *const buff, 
@@ -84,6 +84,7 @@ int reader(
 }
 
 
+// message exctractor
 int get_msg( 
     char *const buff, 
     char **buff_freepos,
@@ -107,7 +108,7 @@ int get_msg(
 
 
   // scanpos should never pass freepos
-  if( *buff_freepos - *scanpos < msgend_size  )
+  if( ( size_t )( *buff_freepos - *scanpos ) < msgend_size  )
     return 0;  // we have nothing to do
 
   // look for message end
@@ -149,6 +150,8 @@ int get_msg(
   // It is lost for ever
   if( *buff_leftsize == 0 )  {
 
+    fprintf( stderr, "Message was too big and part of it was discarded " );
+
     *buff_leftsize += *buff_freepos - buff;
     *buff_freepos = buff;
     *scanpos = buff;  
@@ -163,17 +166,144 @@ int get_msg(
 
 }
 
+void *find_inmem( void *const bmem, const size_t bmem_size,
+    void *const smem, const size_t smem_size )  {
 
+  assert( bmem != NULL );
+  assert( bmem_size != 0 );
+  assert( smem != NULL );
+  assert( smem_size != 0 );
+  assert( bmem_size > smem_size );
+
+  // TODO assert and uint8_t
+
+  uint8_t *track_bmem = bmem;
+  uint8_t *const bmem_keep = bmem;
+  size_t bmem_leftsize = bmem_size - smem_size + 1;
+  const size_t bmem_startsize = bmem_leftsize;
+  const int smem_chr = ( ( uint8_t* )smem )[0];
+  
+  for(;;)  {
+
+    track_bmem = memchr( track_bmem, smem_chr, bmem_leftsize );
+    if( track_bmem == NULL )  return NULL;
+
+    if( ! memcmp( track_bmem, smem, smem_size ) )
+      return track_bmem;
+
+    // special case where we would stop just before the end
+    // else could overflow on bmem left size
+    if( ( size_t )( track_bmem - bmem_keep ) == bmem_startsize )
+        return NULL;
+
+    track_bmem++; // move pointer one place forward.
+    bmem_leftsize -= track_bmem - bmem_keep; 
+
+  }
+
+}
+
+
+// Function for static strings ( args and hardcoded )
+char *aloc_irccmd( 
+  const char *const cmd,
+  const char *const cmdbody )  {
+
+  char irc_cmdend[] = "\r\n";
+
+  size_t irccmd_size = strlen( cmd );
+  irccmd_size += strlen( cmdbody );
+  irccmd_size += strlen( irc_cmdend );
+  irccmd_size += 100; // nul + space and some more not needed
+
+  char *irccmd =  malloc( irccmd_size );
+  if( irccmd == NULL )  return NULL; 
+
+  if( sprintf( irccmd, "%s %s%s", cmd, cmdbody, irc_cmdend ) < 0 )  {
+
+    free( irccmd );
+    return NULL;
+
+  }
+
+  return irccmd;
+
+}
+
+// MAIN PROGRAM FUNCTIONS
+
+
+int ( *irc_usedata )( 
+    const int fd,
+    char *const buff,
+    const size_t buff_size
+    ) = NULL;
+
+int ( *stdin_usedata )( 
+    const int fd,
+    char *const buff,
+    const size_t buff_size
+    ) = NULL;
+
+int ircstart( 
+    const int fd,
+    const char *const userstr,
+    const char *const nick
+
+)  {
+ 
+   char *ircmsg = aloc_irccmd( "USER", userstr );
+   if( ircmsg == NULL )  return -1;
+   size_t ircmsg_size = strlen( ircmsg );
+   if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
+     goto errcleanup;
+   puts( ircmsg );
+   free( ircmsg );
+
+   ircmsg = aloc_irccmd( "NICK", nick );
+   if( ircmsg == NULL )  return -1;
+   ircmsg_size = strlen( ircmsg );
+   if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
+     goto errcleanup;
+   puts( ircmsg );
+   free( ircmsg );
+
+   return 0;
+
+ errcleanup:
+  free( ircmsg );
+  return -1;
+
+}
+
+/*
+int irc_startup_ident( const int fd,
+    char *const buff,
+    const size_t buff_size
+)  {
+
+
+  // When ident string appears 
+ // if( find_inmem( buff, buff_size, startup_str, strlen( startup_str ) ) )  {
+
+
+  return 0;
+
+}
+*/
 int main( const int argc, const char *const argv[] )  {
 
   // check args and set with pointer variables
-  if( argc != 4 )  fail( "We need IP, port and irc channel in argments" );
+  if( argc != 7 )  fail( "Wrong number fo arguments" );
   const char *const ip = argv[1];
   const char *const port = argv[2];
   const char *const chan = argv[3];
+  const char *const userstr = argv[4];
+  const char *const nick = argv[5];
+  const char *const pass = argv[6];
+  
+( void ) pass;
 
-  // error log passed arguments and set port
-  fprintf( stderr, "%s %s %s\n", ip, port, chan );
   long int port_num = ign_strtoport( port );
   if( port_num == -1 )  fail( "Port number is invalid" );
 
@@ -227,10 +357,15 @@ int main( const int argc, const char *const argv[] )  {
     buffirc_msg_size = 0;
     irc_scanpos = buffirc;
     int ircdata_stat = 0;
+ //   irc_usedata = irc_startup_ident;
+
 
     // set up connection socket
     int confd = setcon( ip, port_num );
     if( confd == -1 ) fail( "Failed on seting up conection socket" );
+
+    // send startup commands to ircserver
+    ircstart( confd, userstr, nick );
 
     for( int readstat ;;)  {
 
@@ -281,18 +416,32 @@ int main( const int argc, const char *const argv[] )  {
             stdin_end, stdin_end_size, &stdin_scanpos );
 
       }
+
       // use data
 
       if( ircdata_stat == 1 )  {
-
-        for( int i = 0; i < buffirc_msg_size; i++ )
-          putchar( buffirc_msg[i] );
+        
+	fprintf( stderr, "%.*s\n", ( int )buffirc_msg_size, buffirc_msg );
         ircdata_stat = 0;
-        puts("");
+        if( irc_usedata != NULL )  {
+        
+	  irc_usedata( confd, buffirc_msg, buffirc_msg_size );
+
+	}
+      }
+
+      if( stdindata_stat == 1 )   {
+
+        if( stdin_usedata != NULL )  {
+
+	  stdin_usedata( confd, buffstdin_msg, buffstdin_msg_size );
+	  stdindata_stat = 0; 
+
+	}
 
       }
 
-      igt_sleepmsec( 200 );
+      igt_sleepmilisec( 200 );
   
     }
 

@@ -14,8 +14,8 @@ ircbot: libign_inetcli.a libigf_read.a libigf_write.a \
 	libigt_sleep.a ircbot.c
 	${CC} -c $@.c -o $@.o
 	${CC} $@.o -L. -lign_inetcli -lign_strtoport \
-	  -ligf_read -ligf_write -ligf_opt -ligev_signals \
-	  -ligt_sleep -o $@
+	  -ligf_read -ligt_sleep -ligf_write -ligf_opt -ligev_signals \
+	  -o $@
 
 libign_inetcli.a: ignotalib ${IGDIR}/ig_net/ign_inetcli.c 
 	${CC} -c ${IGDIR}/ig_net/ign_inetcli.c -o ign_inetcli.o
