@@ -230,6 +230,46 @@ char *aloc_irccmd(
 
 }
 
+// Function for  dynamic strings
+char *aloc_irccmd_dyn( 
+  const char *const cmd,
+  char *const cmdbody,
+  size_t cmdbody_size )  {
+
+  assert( cmd != NULL );
+  assert( cmdbody != NULL );
+
+  char irc_cmdend[] = "\r\n"; // we will copy it with nul
+
+  size_t irccmd_size = strlen( cmd );
+  irccmd_size += cmdbody_size;
+  irccmd_size += strlen( irc_cmdend );
+  irccmd_size += 100; // nul + space and some more not needed
+
+  char *irccmd =  malloc( irccmd_size );
+  if( irccmd == NULL )  return NULL; 
+  irccmd[ irccmd_size - 1 ] = '\0';  // lame protection
+
+  // this would blow up on cmdbody which has no nul
+  if( snprintf( irccmd, irccmd_size, "%s ",
+      cmd ) < 0 )  {
+
+    free( irccmd );
+    return NULL;
+
+  }
+
+  size_t irccmd_strlen = strlen( irccmd );
+  memcpy( &irccmd[ irccmd_strlen ], cmdbody, cmdbody_size );
+  irccmd_strlen += cmdbody_size;
+  // we can copy the end with nul which a string mustt have in C ;-)
+  memcpy( &irccmd[ irccmd_strlen ], irc_cmdend, sizeof irc_cmdend );
+
+  return irccmd;
+
+}
+
+
 // MAIN PROGRAM FUNCTIONS
 
 
@@ -257,7 +297,6 @@ int ircstart(
    size_t ircmsg_size = strlen( ircmsg );
    if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
      goto errcleanup;
-   puts( ircmsg );
    free( ircmsg );
 
    ircmsg = aloc_irccmd( "NICK", nick );
@@ -265,7 +304,6 @@ int ircstart(
    ircmsg_size = strlen( ircmsg );
    if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
      goto errcleanup;
-   puts( ircmsg );
    free( ircmsg );
 
    return 0;
@@ -276,21 +314,44 @@ int ircstart(
 
 }
 
-/*
-int irc_startup_ident( const int fd,
-    char *const buff,
-    const size_t buff_size
+
+// note space
+char ping[] = "PING ";
+size_t ping_len = ( sizeof ping / sizeof *ping ) - 1;
+
+// -1 on error
+// 0 msg is not a ping
+// 1 msg is ping so it should be later on ignored
+int irc_chkans_ping( 
+    const int fd,
+    char *const msg,
+    size_t msg_size
 )  {
 
+  // for sure it is not a PING since PING can't even fit this
+  if( msg_size < 5 )  return 0;
+  if( memcmp( msg, ping, ping_len ) )  return 0;
 
-  // When ident string appears 
- // if( find_inmem( buff, buff_size, startup_str, strlen( startup_str ) ) )  {
+   // protection 
+   char *pass_str = "";
+   msg_size -= 5; 
+   if( msg_size != 0 )  pass_str = &msg[5];
 
+   char *ircmsg = aloc_irccmd_dyn( "PONG", pass_str, msg_size );
+   if( ircmsg == NULL )  return -1;
+   size_t ircmsg_size = strlen( ircmsg );
+   if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
+     goto errcleanup;
+   free( ircmsg );
 
-  return 0;
+   return 1; // it was PING request
+
+  errcleanup:
+   free( ircmsg );
+   return -1;
 
 }
-*/
+
 int main( const int argc, const char *const argv[] )  {
 
   // check args and set with pointer variables
@@ -302,6 +363,7 @@ int main( const int argc, const char *const argv[] )  {
   const char *const nick = argv[5];
   const char *const pass = argv[6];
   
+( void ) chan;
 ( void ) pass;
 
   long int port_num = ign_strtoport( port );
@@ -320,7 +382,7 @@ int main( const int argc, const char *const argv[] )  {
   char buffirc[ BUFFSIZE ];
   size_t buffirc_leftsize;
   char *buffirc_freepos;
-  char buffirc_msg[ BUFFSIZE ] = {0};
+  char buffirc_msg[ BUFFSIZE ];
   size_t buffirc_msg_size;
   char *irc_scanpos;
 
@@ -365,21 +427,50 @@ int main( const int argc, const char *const argv[] )  {
     if( confd == -1 ) fail( "Failed on seting up conection socket" );
 
     // send startup commands to ircserver
-    ircstart( confd, userstr, nick );
+    // TODO handle errrors here
+    if( ircstart( confd, userstr, nick )  == -1 )  {
+ 
+      int saveerrno = errno;
+      close( confd );
+      errno = saveerrno;
+ 
+      switch( errno )  {
 
-    for( int readstat ;;)  {
+      case 0:
+         case EBADF:
+         case EPIPE:
+         case ENETUNREACH:
+         case ENETDOWN:
+         case ECONNRESET:
+	   break;  // restart
+
+         default:
+           fail( "Program failed on reader function from irc data" );
+
+      }
+
+      // If we are here - we restart
+      perror( "Reconnecting with irc server on error" );
+      continue;
+
+    }
+
+    for( int programstat ;;)  {
 
       // perform reading
 
-      readstat = reader( confd, buffirc, &buffirc_freepos,
+      programstat = reader( confd, buffirc, &buffirc_freepos,
           &buffirc_leftsize );
 
-      if( readstat == -1 )  {
+      if( programstat == -1 )  {
 
-        close( confd );
+        int saveerrno = errno;
+	close( confd );
+        errno = saveerrno;
         switch( errno )  {
 
           case 0:
+	  case EBADF:
           case ECONNRESET:
             break;  // restart
 
@@ -388,12 +479,16 @@ int main( const int argc, const char *const argv[] )  {
 
         }
 
+	// If we are here - we restart
+	perror( "Reconnecting with irc server on error" );
+	break;
+
       }
 
-      readstat = reader( stdinfd, buffstdin, &buffstdin_freepos,
+      programstat = reader( stdinfd, buffstdin, &buffstdin_freepos,
           &buffstdin_leftsize );
 
-      if( readstat == -1 )  {
+      if( programstat == -1 )  {
 
         close( confd );  
         fail( "Program failed on reader function from stdio data" );
@@ -417,17 +512,66 @@ int main( const int argc, const char *const argv[] )  {
 
       }
 
-      // use data
-
+      // use irc data
       if( ircdata_stat == 1 )  {
         
-	fprintf( stderr, "%.*s\n", ( int )buffirc_msg_size, buffirc_msg );
-        ircdata_stat = 0;
-        if( irc_usedata != NULL )  {
+	programstat = 0;
+	for(;;)  {
+
+	  fprintf( stderr,"%.*s\n",( int )buffirc_msg_size, buffirc_msg );
+
+	  // look for ping in first place
+	  int retval = irc_chkans_ping( confd, buffirc_msg,
+              buffirc_msg_size );
+  	  if( retval == 1 )  {  // that was ping, load next msg
+
+	    ircdata_stat = 0;
+	    break; 
+
+	  }
+	  else if( retval == -1 )  // handle error
+            goto errorcheck;
+
+	  // other actions with msg data
+          if( irc_usedata != NULL )  {
         
-	  irc_usedata( confd, buffirc_msg, buffirc_msg_size );
+	    retval = irc_usedata( confd, buffirc_msg, buffirc_msg_size );
+            if( retval == -1 )  goto errorcheck;
+
+  	  }
+
+	  ircdata_stat = 0;
+	  break;  // leave loop, all done
+  
+         errorcheck:;
+	  int saveerrno = errno;
+	  close( confd );
+	  errno = saveerrno;
+	  switch( errno )  {
+
+	   case 0:
+           case EBADF:
+           case EPIPE:
+           case ENETUNREACH:
+           case ENETDOWN:
+           case ECONNRESET:
+	     break;  // restart
+
+           default:
+             fail( "Program failed on reader function from irc data" );
+
+	  }
+
+          // If we are here - we restart
+	  programstat = -1;
+          perror( "Reconnecting with irc server on error" );
+          break;
 
 	}
+
+	// catch restart fromkerror from inside loop
+	if( programstat == -1 )  break; 
+
       }
 
       if( stdindata_stat == 1 )   {
@@ -441,7 +585,7 @@ int main( const int argc, const char *const argv[] )  {
 
       }
 
-      igt_sleepmilisec( 200 );
+      igt_sleepmilisec( 150 );
   
     }
 

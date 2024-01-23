@@ -1,5 +1,5 @@
 DBG=#-DNDEBUG
-CC=cc -Wall -Wextra -pedantic -std=c99 -D_POSIX_C_SOURCE=200809L ${DBG}
+CC=cc -Wall -Wextra -pedantic -std=c99 -D_POSIX_C_SOURCE=200809L -O0  ${DBG}
 AR=ar rcs
 
 IGDIR=ignotalib/src
