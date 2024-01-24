@@ -272,36 +272,30 @@ char *aloc_irccmd_dyn(
 
 // MAIN PROGRAM FUNCTIONS
 
-
+// might be needed one day
 int ( *irc_usedata )( 
-    const int fd,
-    char *const buff,
-    const size_t buff_size
+    const int,
+    char *const,
+    const size_t
     ) = NULL;
 
 int ( *stdin_usedata )( 
-    const int fd,
-    char *const buff,
-    const size_t buff_size
+    const int,
+    char *const,
+    const size_t,
+    const char *const
     ) = NULL;
 
-int ircstart( 
+
+int irc_join_chan( 
     const int fd,
-    const char *const userstr,
-    const char *const nick
+    const char *const chan
 
 )  {
  
-   char *ircmsg = aloc_irccmd( "USER", userstr );
+   char *ircmsg = aloc_irccmd( "JOIN", chan );
    if( ircmsg == NULL )  return -1;
    size_t ircmsg_size = strlen( ircmsg );
-   if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
-     goto errcleanup;
-   free( ircmsg );
-
-   ircmsg = aloc_irccmd( "NICK", nick );
-   if( ircmsg == NULL )  return -1;
-   ircmsg_size = strlen( ircmsg );
    if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
      goto errcleanup;
    free( ircmsg );
@@ -325,7 +319,9 @@ size_t ping_len = ( sizeof ping / sizeof *ping ) - 1;
 int irc_chkans_ping( 
     const int fd,
     char *const msg,
-    size_t msg_size
+    size_t msg_size,
+    const char *const chan
+
 )  {
 
   // for sure it is not a PING since PING can't even fit this
@@ -344,6 +340,9 @@ int irc_chkans_ping(
      goto errcleanup;
    free( ircmsg );
 
+   // just recheck we are in channel
+   if( irc_join_chan( fd, chan ) == -1 )  return -1;
+
    return 1; // it was PING request
 
   errcleanup:
@@ -351,6 +350,67 @@ int irc_chkans_ping(
    return -1;
 
 }
+
+int stdin_to_irc( 
+    const int fd,
+    char *const buff,
+    size_t buff_size,
+    const char *const cmd
+
+)  {
+  
+   char *ircmsg = aloc_irccmd_dyn( cmd, buff, buff_size );
+   if( ircmsg == NULL )  return -1;
+   size_t ircmsg_size = strlen( ircmsg );
+   if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
+     goto errcleanup;
+   free( ircmsg );
+
+   return 0;
+
+  errcleanup:
+   free( ircmsg );
+   return -1;
+
+}
+
+
+int ircstart( 
+    const int fd,
+    const char *const userstr,
+    const char *const nick,
+    const char *const chan
+
+)  {
+ 
+   char *ircmsg = aloc_irccmd( "USER", userstr );
+   if( ircmsg == NULL )  return -1;
+   size_t ircmsg_size = strlen( ircmsg );
+   if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
+     goto errcleanup;
+   free( ircmsg );
+
+   ircmsg = aloc_irccmd( "NICK", nick );
+   if( ircmsg == NULL )  return -1;
+   ircmsg_size = strlen( ircmsg );
+   if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
+     goto errcleanup;
+   free( ircmsg );
+
+   // join channel
+   if( irc_join_chan( fd, chan ) == -1 )
+     return -1;
+
+   stdin_usedata = stdin_to_irc;
+ 
+   return 0;
+
+ errcleanup:
+  free( ircmsg );
+  return -1;
+
+}
+
 
 int main( const int argc, const char *const argv[] )  {
 
@@ -363,7 +423,21 @@ int main( const int argc, const char *const argv[] )  {
   const char *const nick = argv[5];
   const char *const pass = argv[6];
   
-( void ) chan;
+  char *irc_msgcmd = "PRIVMSG";
+  size_t msgcmd_minsize = strlen( irc_msgcmd );
+  msgcmd_minsize++;  // spcace char
+  msgcmd_minsize += strlen( chan );
+  msgcmd_minsize++;  // spcace char
+  msgcmd_minsize++;  // : char
+  msgcmd_minsize++;  // nul
+
+  char msgcmd[ 1024 ];
+  if( sizeof msgcmd < msgcmd_minsize )
+    fail( "Message command can't fit in buff" );
+
+  if( snprintf( msgcmd, sizeof msgcmd, "%s %s :", irc_msgcmd, chan ) < 0 )
+    fail( "Failed on msgcmd creation" );
+
 ( void ) pass;
 
   long int port_num = ign_strtoport( port );
@@ -428,7 +502,7 @@ int main( const int argc, const char *const argv[] )  {
 
     // send startup commands to ircserver
     // TODO handle errrors here
-    if( ircstart( confd, userstr, nick )  == -1 )  {
+    if( ircstart( confd, userstr, nick, chan )  == -1 )  {
  
       int saveerrno = errno;
       close( confd );
@@ -522,7 +596,7 @@ int main( const int argc, const char *const argv[] )  {
 
 	  // look for ping in first place
 	  int retval = irc_chkans_ping( confd, buffirc_msg,
-              buffirc_msg_size );
+              buffirc_msg_size, chan );
   	  if( retval == 1 )  {  // that was ping, load next msg
 
 	    ircdata_stat = 0;
@@ -578,7 +652,10 @@ int main( const int argc, const char *const argv[] )  {
 
         if( stdin_usedata != NULL )  {
 
-	  stdin_usedata( confd, buffstdin_msg, buffstdin_msg_size );
+		// TODO split the message if there is such need
+
+	  fprintf( stderr,"%.*s\n",( int )buffstdin_msg_size, buffstdin_msg );
+	  stdin_usedata( confd, buffstdin_msg, buffstdin_msg_size, msgcmd );
 	  stdindata_stat = 0; 
 
 	}
