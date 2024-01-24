@@ -425,11 +425,11 @@ int main( const int argc, const char *const argv[] )  {
   
   char *irc_msgcmd = "PRIVMSG";
   size_t msgcmd_minsize = strlen( irc_msgcmd );
-  msgcmd_minsize++;  // spcace char
+  msgcmd_minsize++;  // ' '
   msgcmd_minsize += strlen( chan );
-  msgcmd_minsize++;  // spcace char
-  msgcmd_minsize++;  // : char
-  msgcmd_minsize++;  // nul
+  msgcmd_minsize++;  // ' '
+  msgcmd_minsize++;  // ':'
+  msgcmd_minsize++;  // '\0'
 
   char msgcmd[ 1024 ];
   if( sizeof msgcmd < msgcmd_minsize )

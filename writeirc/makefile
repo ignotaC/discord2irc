@@ -6,7 +6,7 @@ IGDIR=ignotalib/src
 
 .PHONY: make clean clear update
 
-make: ircbot gethostipv lext
+make: ircbot gethostipv lext fstrswp
 	sh runircbot.sh
 
 ircbot: libign_inetcli.a libigf_read.a libigf_write.a \
@@ -56,6 +56,11 @@ gethostipv: smallsoft
 lext: smallsoft
 	cp smallsoft/bin/lext .
 
+
+fstrswp: smallsoft
+	cp smallsoft/bin/fstrswp .
+
+
 smallsoft:
 	git clone 'https://github.com/ignotaC/smallsoft.git'
 	make -C 'smallsoft'
@@ -67,7 +72,7 @@ update:
 
 clean clear:
 	rm -rf ignotalib
-	rm -rf smallsoft gethostipv lext
+	rm -rf smallsoft gethostipv lext fstrswp
 	rm -rf igf_read.o libigf_read.a
 	rm -rf igf_write.o libigf_write.a
 	rm -rf igf_opt.o libigf_opt.a

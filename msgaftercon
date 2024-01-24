@@ -1,0 +1,2 @@
+
+PRIVMSG nickserv IDENTIFY &nick &password

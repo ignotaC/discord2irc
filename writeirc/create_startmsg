@@ -1,0 +1,26 @@
+#!/bin/ksh
+
+ircconf='../../data/irc.conf'
+msgaftercon='../../data/msgaftercon'
+msgaftercon_gen='../../data/msgaftercon_gen'
+
+test -e "$ircconf" || exit
+test -e "$msgaftercon" || exit
+
+cp "$msgaftercon" "$msgaftercon_gen"
+tmpf="$( mktemp )"
+
+while IFS=: read -r type data
+do
+
+  test -z "$type" && continue
+  type='&'"$type"
+  cp "$msgaftercon_gen" "$tmpf"
+  ./fstrswp "$type" "$data" < "$tmpf" > "$msgaftercon_gen"
+
+done < "$ircconf"
+
+awk NF < "$msgaftercon_gen" > "$tmpf"
+cp "$tmpf" "$msgaftercon_gen"
+
+rm -f "$tmpf"
