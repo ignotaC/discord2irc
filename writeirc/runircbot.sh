@@ -14,4 +14,6 @@ userstr="$nick"' '"$hostname"' '"$servername"' '"$realname"
 
 IP=` ./gethostipv "$domain" | head -n 1 `
 
+./create_startmsg
+
 ./ircbot "$IP" "$port" "$channel" "$userstr" "$nick" "$password"

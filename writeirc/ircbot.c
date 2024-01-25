@@ -83,6 +83,43 @@ int reader(
 
 }
 
+void *find_inmem( void *const bmem, const size_t bmem_size,
+    void *const smem, const size_t smem_size )  {
+
+  assert( bmem != NULL );
+  assert( bmem_size != 0 );
+  assert( smem != NULL );
+  assert( smem_size != 0 );
+  assert( bmem_size > smem_size );
+
+  uint8_t *track_bmem = bmem;
+  uint8_t *const bmem_keep = bmem;
+  size_t bmem_leftsize = bmem_size - smem_size + 1;
+  const size_t bmem_startsize = bmem_leftsize;
+  const int smem_chr = ( ( uint8_t* )smem )[0];
+  
+  for(;;)  {
+
+    track_bmem = memchr( track_bmem, smem_chr, bmem_leftsize );
+    if( track_bmem == NULL )  return NULL;
+
+    if( ! memcmp( track_bmem, smem, smem_size ) )
+      return track_bmem;
+
+    // special case where we would stop just before the end
+    // else could overflow on bmem left size
+    if( ( size_t )( track_bmem - bmem_keep ) == bmem_startsize )
+        return NULL;
+
+    track_bmem++; // move pointer one place forward.
+    bmem_leftsize -= track_bmem - bmem_keep; 
+
+  }
+
+}
+
+
+
 
 // message exctractor
 int get_msg( 
@@ -120,6 +157,8 @@ int get_msg(
   // we can't go further becasue we could leave buff memory in some cases
   size_t msgmaxsize = msgsize - msgend_size; // note <= in loop
   for( size_t i = *scanpos - buff; i <= msgmaxsize; i++ )  {
+
+// TODO upgrade it using memchr
 
     // There is a full message
     if( ! memcmp( &buff[i], msgend, msgend_size ) )  {
@@ -166,42 +205,6 @@ int get_msg(
 
 }
 
-void *find_inmem( void *const bmem, const size_t bmem_size,
-    void *const smem, const size_t smem_size )  {
-
-  assert( bmem != NULL );
-  assert( bmem_size != 0 );
-  assert( smem != NULL );
-  assert( smem_size != 0 );
-  assert( bmem_size > smem_size );
-
-  // TODO assert and uint8_t
-
-  uint8_t *track_bmem = bmem;
-  uint8_t *const bmem_keep = bmem;
-  size_t bmem_leftsize = bmem_size - smem_size + 1;
-  const size_t bmem_startsize = bmem_leftsize;
-  const int smem_chr = ( ( uint8_t* )smem )[0];
-  
-  for(;;)  {
-
-    track_bmem = memchr( track_bmem, smem_chr, bmem_leftsize );
-    if( track_bmem == NULL )  return NULL;
-
-    if( ! memcmp( track_bmem, smem, smem_size ) )
-      return track_bmem;
-
-    // special case where we would stop just before the end
-    // else could overflow on bmem left size
-    if( ( size_t )( track_bmem - bmem_keep ) == bmem_startsize )
-        return NULL;
-
-    track_bmem++; // move pointer one place forward.
-    bmem_leftsize -= track_bmem - bmem_keep; 
-
-  }
-
-}
 
 
 // Function for static strings ( args and hardcoded )
@@ -268,6 +271,33 @@ char *aloc_irccmd_dyn(
   return irccmd;
 
 }
+
+// Function for  dynamic msg TODO after alocprintf  this can be swaped
+char *aloc_ircline_dyn( 
+  char *const cmdbody,
+  size_t cmdbody_size )  {
+
+  assert( cmdbody != NULL );
+
+  char irc_cmdend[] = "\r\n"; // we will copy it with nul
+
+  size_t irccmd_size = cmdbody_size;
+  irccmd_size += strlen( irc_cmdend );
+  irccmd_size += 100; // nul + space and some more not needed
+
+  char *irccmd =  malloc( irccmd_size );
+  if( irccmd == NULL )  return NULL; 
+  irccmd[ irccmd_size - 1 ] = '\0';  // lame protection
+
+  memcpy( irccmd, cmdbody, cmdbody_size );
+  size_t irccmd_strlen = cmdbody_size;
+  // we can copy the end with nul which a string mustt have in C ;-)
+  memcpy( &irccmd[ irccmd_strlen ], irc_cmdend, sizeof irc_cmdend );
+
+  return irccmd;
+
+}
+
 
 
 // MAIN PROGRAM FUNCTIONS
@@ -374,6 +404,7 @@ int stdin_to_irc(
 
 }
 
+#define MSGSTARTUP_FILE "../../data/msgaftercon_gen"
 
 int ircstart( 
     const int fd,
@@ -396,6 +427,38 @@ int ircstart(
    if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
      goto errcleanup;
    free( ircmsg );
+
+   // user startup commands
+   
+   FILE *startupcmd_file = fopen( MSGSTARTUP_FILE, "r" );
+   if( startupcmd_file == NULL )  return -1;
+
+   char *sc_line = NULL;
+   size_t sc_line_size = 0;
+   for(;;)  {
+
+     if( getline( &sc_line, &sc_line_size, startupcmd_file ) == -1 )  {
+
+       if( ferror( startupcmd_file ) )  return -1;
+       break; // EOF
+
+     }
+
+     // remove new line
+     char *newline = strchr( sc_line, '\n' );
+     if( newline != NULL )  *newline = '\0';
+
+     ircmsg = aloc_ircline_dyn( sc_line, strlen( sc_line ) );
+     if( ircmsg == NULL )  return -1;
+     ircmsg_size = strlen( ircmsg );
+     if( igf_writeall_nb( fd, ircmsg, ircmsg_size, 200 ) == -1 )
+       goto errcleanup;
+     free( ircmsg );
+
+   }
+
+   free( sc_line );
+   fclose( startupcmd_file );
 
    // join channel
    if( irc_join_chan( fd, chan ) == -1 )
@@ -501,7 +564,6 @@ int main( const int argc, const char *const argv[] )  {
     if( confd == -1 ) fail( "Failed on seting up conection socket" );
 
     // send startup commands to ircserver
-    // TODO handle errrors here
     if( ircstart( confd, userstr, nick, chan )  == -1 )  {
  
       int saveerrno = errno;
@@ -654,7 +716,6 @@ int main( const int argc, const char *const argv[] )  {
 
 		// TODO split the message if there is such need
 
-	  fprintf( stderr,"%.*s\n",( int )buffstdin_msg_size, buffstdin_msg );
 	  stdin_usedata( confd, buffstdin_msg, buffstdin_msg_size, msgcmd );
 	  stdindata_stat = 0; 
 
