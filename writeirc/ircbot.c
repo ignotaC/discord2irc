@@ -20,6 +20,8 @@
 #include <time.h>
 
 #define BUFFSIZE 8192
+#define MAX_IRCMSG_SIZE 512
+#define CRLF_SIZE 2
 
 // basic error log function
 void fail( const char *const estr )  {
@@ -90,7 +92,7 @@ void *find_inmem( void *const bmem, const size_t bmem_size,
   assert( bmem_size != 0 );
   assert( smem != NULL );
   assert( smem_size != 0 );
-  assert( bmem_size > smem_size );
+  assert( bmem_size >= smem_size );
 
   uint8_t *track_bmem = bmem;
   uint8_t *const bmem_keep = bmem;
@@ -128,7 +130,7 @@ int get_msg(
     size_t *buff_leftsize,
     char *const buff_msg,
     size_t *const buff_msg_size,
-    const char *const msgend,
+    char *const msgend,
     const size_t msgend_size,
     char **scanpos
     )   {
@@ -145,42 +147,39 @@ int get_msg(
 
 
   // scanpos should never pass freepos
+  size_t scan_size = *buff_freepos - *scanpos;
   if( ( size_t )( *buff_freepos - *scanpos ) < msgend_size  )
     return 0;  // we have nothing to do
 
-  // look for message end
-  ptrdiff_t msgsize = *buff_freepos - buff;
-  assert( msgsize >= 0 );
+  // look for message end, same here buff_freepos never less than buff 
+  size_t  msgsize = *buff_freepos - buff;
   // read is smaller than message end, we can leave
-  if( ( size_t )msgsize < msgend_size )  return 0;
+  if( msgsize < msgend_size )  return 0;
 
-  // we can't go further becasue we could leave buff memory in some cases
-  size_t msgmaxsize = msgsize - msgend_size; // note <= in loop
-  for( size_t i = *scanpos - buff; i <= msgmaxsize; i++ )  {
+  // There is a full message
+  char *msgend_p = find_inmem( *scanpos, scan_size, msgend, msgend_size );
+  if( msgend_p != NULL )  {
 
-// TODO upgrade it using memchr
+    // because we will move all not copied data
+    // at the buff start so does the scanpos go on start
+    *scanpos = buff;
 
-    // There is a full message
-    if( ! memcmp( &buff[i], msgend, msgend_size ) )  {
+    // all we need to do with buff_msg part
+    // se don't move msgend we kind of discard it
+    *buff_msg_size = msgend_p - buff; // set it's new size
+    memcpy( buff_msg, buff, *buff_msg_size ); // copy msg
 
-      // because we will move all not copied data
-      // at the buff start so does the scanpos go on start
-      *scanpos = buff;
+    // update buff leftsize and freepos
+    // this time we need to remeber
+    // that there might be some data still inside
+    // so we can't set freepos to buff
+    *buff_leftsize += *buff_msg_size + msgend_size;
+    *buff_freepos -= *buff_msg_size + msgend_size;
 
-      // all we need to do with buff_msg part
-      *buff_msg_size = i; // set it's new size
-      memcpy( buff_msg, buff, *buff_msg_size ); // copy msg
-
-      // update buff leftsize and freepos
-      *buff_leftsize += *buff_msg_size + msgend_size;
-      *buff_freepos -= *buff_msg_size + msgend_size;
-
-      // move data in buff
-      size_t curdata_size = *buff_freepos - buff;
-      memmove( buff, &buff[ i + msgend_size ], curdata_size );
-      return 1;  // msg passed to buff_msg and discarded from buff
-
-    }
+    // move data in buff
+    size_t curdata_size = *buff_freepos - buff;
+    memmove( buff, &buff[ *buff_msg_size + msgend_size ], curdata_size );
+    return 1;  // msg passed to buff_msg and discarded from buff
 
   }
 
@@ -396,6 +395,8 @@ int stdin_to_irc(
      goto errcleanup;
    free( ircmsg );
 
+   sleep( 2 );
+
    return 0;
 
   errcleanup:
@@ -532,10 +533,10 @@ int main( const int argc, const char *const argv[] )  {
 
   //msg endings
 
-  const char *const stdin_end = "\n";
+  char *const stdin_end = "\n";
   const size_t stdin_end_size = strlen( stdin_end );
 
-  const char *const irc_end = "\r\n";
+  char *const irc_end = "\r\n";
   const size_t irc_end_size = strlen( irc_end );
 
   // stuff from stdio never is restarted - stdio part errors
@@ -714,9 +715,30 @@ int main( const int argc, const char *const argv[] )  {
 
         if( stdin_usedata != NULL )  {
 
-		// TODO split the message if there is such need
+          size_t max_bodymsg_size = 
+	      MAX_IRCMSG_SIZE - CRLF_SIZE - msgcmd_minsize;
+	 
+	  for( char *buffpos = buffstdin_msg;;)  {
+	    
+	    // send untill all passed
+	    if( buffstdin_msg_size == 0 )  break;
 
-	  stdin_usedata( confd, buffstdin_msg, buffstdin_msg_size, msgcmd );
+	    if( buffstdin_msg_size > max_bodymsg_size )  {
+
+	      //message too big, we need to cut it
+              stdin_usedata( confd, buffpos, max_bodymsg_size, msgcmd );
+	      buffstdin_msg_size -= max_bodymsg_size;
+	      buffpos += max_bodymsg_size;
+
+	    }  else  {
+
+	      // message is smaller then max message
+              stdin_usedata( confd, buffpos, buffstdin_msg_size, msgcmd );
+	      break;
+
+	    }
+
+	  }
 	  stdindata_stat = 0; 
 
 	}
