@@ -1,7 +1,10 @@
 CC = cc -Wall -Wextra -pedantic -pthread -std=c99 -O2
 
-.PHONY: make clean clear
+.PHONY: make clean clear update
+
+
 make: concord/lib/libdiscord.a logdisc
+	@printf 'logdisc program builded\n'
 
 logdisc.o: logdisc.c
 	${CC}  -Iconcord/include -Iconcord/core -Iconcord/gencodecs \

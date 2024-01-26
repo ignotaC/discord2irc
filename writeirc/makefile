@@ -7,7 +7,7 @@ IGDIR=ignotalib/src
 .PHONY: make clean clear update
 
 make: ircbot gethostipv lext fstrswp
-	sh runircbot.sh
+	printf 'Ircbot was build\n'
 
 ircbot: libign_inetcli.a libigf_read.a libigf_write.a \
 	libign_strtoport.a libigf_opt.a libigev_signals.a \
