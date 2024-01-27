@@ -7,7 +7,6 @@ to specified irc channel.
 2. Quick overlook irc part
 3. Installation
 
-
 ## Quick overlook discord part
 ##  1  ################################################################
 Discord program:  logdisc wraped with logdisc.sh
@@ -53,13 +52,12 @@ DEPENDENCIES
 
 First of all you need to get dependencies:
 -> ksh
--> cc
--> make
+-> cc ( c compiler vide clang or gcc )
 -> cmake
 -> pkg-config
 -> curl library + headers ( dev )
 -> git
--> gmake
+-> gmake ( a must for discord->concord )
 
 SETING UP DIRECTORIES:  !!! CRUCIAL !!!
 
@@ -92,7 +90,9 @@ There is also make clean which does the same thing make clear does.
 
 FILLING CONFIG FILES:
 
-We have three config files make has moved to data dir ( else it would not build )
+We have three config files make has moved to data dir
+( else it would not build )
+
 irc.conf msgaftercon config.json
 
 I will show how those files look like and discribe which parts you edit.
@@ -115,7 +115,7 @@ I will show how those files look like and discribe which parts you edit.
     "disable_modules": ["WEBSOCKETS", "USER_AGENT", "DISCORD_HTTP" ]
   },
   "discord": {
-    "token": "MTE5NzYwMjI0Mzk5ODkyMDczNg.GyhCbr.b1TPfdwvBu_dI1Nbo4ZYHw609Z8f93vThh3eBA",
+    "token": "<token code you need to enter here>",
     "default_prefix": {
       "enable": false,
       "prefix": "YOUR-COMMANDS-PREFIX"
@@ -166,8 +166,123 @@ Realname, well just write here what ever you want, default is bot
 realname: < bot name >
 
 Password that can be used to log in on network account. This will be
-discussed more with third last config file.
+discussed more in third last config file.
 password: < some password not using spaces >
+
+You can add your own arguments, a line example:
+liberapass: liberapass
+
+############# start
+
+PRIVMSG nickserv :IDENTIFY &nick &password
+
+############# end
+
+Every line in this file is parsed.
+Empty lines get ignored.
+Anything with & before is treated as a variable and is swaped with
+value that is stored inside.
+
+So parser when encounters &nick looks for
+nick: <somename>  inside irc.conf
+and swaps &name to <somename>
+
+After that and establishing connection  line is sent to ircserver.
+This happens before joining channels.
+
+Example line is a simple way of sending a authentication request on
+libera network. So when you enable having cloak your bot will stay
+hidden.
+
+Notice in example line and remeber. ':' is part of irc  message protocol
+so is PRIVMSG. 
+
+SETTING UP ACCOUNTS FOR BOTS ON IRC AND DISCORD
+
+IRC
+
+This is fairly simple. You need to find irc sevrers domain name and port.
+Every irc has support channel named by netowrk name where they can help
+you out. Some irc networks don't even have user/login you simply connect
+by nick. For example ircnet. Others like libera allow you to have
+user account. 
+
+So on libera you would create account in a manner like that:
+irssi -c irc.libera.chat
+/nick <nick I want>
+/msg nickserv REGISTER <password> <email>
+
+DISCORD
+
+On discord you need to simply create your account. Rest is not that simple.
+Documentation for discord is complete garbage, everything is hidden in
+gui borthel and no matter how good your intuition is you have zero chance to
+do it on your own without losing a lot of time for some basic stuff like
+check box or find token.
+
+All steps here are for using webbrowser discord page.
+You don't need to install their app. Which is probably as
+bad as everything else. 
+
+1. You create your account.
+
+Type Discord in your web browser and move inside, find registration for
+account, register. Log in, this is important for next steps. Keep being
+loged in.
+Fairly easy as far. once you do that move to point 2.
+
+2. Tell discord you want to have a bot
+
+Yes you literaly have to tell fucking discordm
+that - you want to have a bot. 
+Discord is very affraid of bots and their dumb fuck gamer population,
+need to be protected from bots ;-)
+
+Don't try to find where that add bot button is in your discord panel.
+Don't waste time and write in your browser: discord developer portal.
+
+Before you enter it KEEP BEING LOGGED on the discord page in your second
+browser tab.
+
+k so you are in the developer panel. And there should be a menu.
+Applications. Click that ( you should by default start in it ).
+And then you will have on that application card: New application
+
+Click that and create your bot. Ones you do that,
+stay in that stupid panel.
+
+3. Get token for bot
+
+If you stayed in the application card - a box/div or what ever, 
+an icon with your bot name appeared. Click that
+
+You are now in your bot menu - pick from menu: Bot
+On Bot card you need to create/reset bot token.
+Do that and save the token which is string of chars.
+Save that to your irc.conf file, into this line it goes:
+
+    "token": "<token code you need to enter here>",
+
+Because safety you can only see that token when you create it.
+
+4. Permissions
+
+This is real cancer and for now i feel like endig,
+the documentation will be updated later
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
