@@ -655,7 +655,7 @@ int main( const int argc, const char *const argv[] )  {
 	programstat = 0;
 	for(;;)  {
 
-	  fprintf( stderr,"%.*s\n",( int )buffirc_msg_size, buffirc_msg );
+	  //fprintf( stderr,"%.*s\n",( int )buffirc_msg_size, buffirc_msg );
 
 	  // look for ping in first place
 	  int retval = irc_chkans_ping( confd, buffirc_msg,

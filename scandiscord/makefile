@@ -3,7 +3,7 @@ CC = cc -Wall -Wextra -pedantic -pthread -std=c99 -O2
 .PHONY: make clean clear update
 
 
-make: concord/lib/libdiscord.a logdisc
+make: concord/lib/libdiscord.a logdisc lext
 	@printf 'logdisc program builded\n'
 
 logdisc.o: logdisc.c
@@ -24,10 +24,22 @@ concord/lib/libdiscord.a: concord
 	       LDFLAGS=`pkg-config --libs libcurl` \
 	       gmake -C concord
 
+lext: smallsoft
+	cp smallsoft/bin/lext .
+
+smallsoft:
+	git clone 'https://github.com/ignotaC/smallsoft.git'
+	make -C 'smallsoft'
+
 update:
 	cd concord; git pull
 	make make
 
 clean clear: 
 	rm -rf concord
+	rm -rf smallsoft
 	rm -rf logdisc logdisc.o
+
+
+
+

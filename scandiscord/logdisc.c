@@ -125,7 +125,10 @@ int main( const int argc, const char *const argv[] )  {
     discord_cleanup( dcli );
     ccord_global_cleanup();
 
-    return 0; // this never returns so what ever happens it's a bug
+    perror( "Program terminated unexpectadly" );
+
+    return -1; // this never returns so what ever happens it's a bug
+	       // It should loop endlessly
 
 }
 

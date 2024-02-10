@@ -1,3 +1,5 @@
+#!/bin/ksh
+
 ircconf='../../data/irc.conf'
 
 domain=` ./lext -c 'domain:' '' < "$ircconf" | tr -d '[:space:]' ` 
